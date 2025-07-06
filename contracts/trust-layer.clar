@@ -97,3 +97,82 @@
     (ok true)
   )
 )
+
+;; Create Digital Reputation Identity
+;; Establishes a new reputation profile within the TrustLayer ecosystem
+(define-public (create-identity (did (string-ascii 50)))
+  (let 
+    (
+      (sender tx-sender)
+      (current-stacks-block-height stacks-block-height)
+    )
+    (begin
+      ;; Ensure identity uniqueness constraint
+      (asserts! (is-none (map-get? identities {owner: sender})) 
+        ERR-IDENTITY-EXISTS)
+      
+      ;; Validate DID format requirements
+      (asserts! (> (len did) u5) 
+        ERR-INVALID-PARAMETERS)
+      
+      ;; Initialize new reputation profile
+      (map-set identities 
+        {owner: sender}
+        {
+          did: did,
+          credibility-score: u50,  ;; Initial reputation allocation
+          created-at: current-stacks-block-height,
+          last-updated: current-stacks-block-height
+        }
+      )
+      (ok did)
+    )
+  )
+)
+
+;; Update Reputation Score
+;; Enhances reputation based on verified network activities
+(define-public (update-credibility 
+  (action-type (string-ascii 50))
+)
+  (let 
+    (
+      (owner tx-sender)
+      (current-identity 
+        (unwrap! 
+          (map-get? identities {owner: owner}) 
+          ERR-IDENTITY-NOT-FOUND
+        )
+      )
+      (action-multiplier 
+        (default-to u0 
+          (get multiplier 
+            (map-get? credibility-actions {action-type: action-type})
+          )
+        )
+      )
+      (current-score (get credibility-score current-identity))
+      (updated-score 
+        (if (< (+ current-score action-multiplier) MAX-CREDIBILITY-SCORE)
+            (+ current-score action-multiplier)
+            MAX-CREDIBILITY-SCORE
+        )
+      )
+    )
+    (begin
+      ;; Verify action type exists in registry
+      (asserts! (is-some (map-get? credibility-actions {action-type: action-type}))
+        ERR-INVALID-PARAMETERS)
+
+      ;; Apply reputation enhancement
+      (map-set identities 
+        {owner: owner}
+        (merge current-identity {
+          credibility-score: updated-score,
+          last-updated: stacks-block-height
+        })
+      )
+      (ok updated-score)
+    )
+  )
+)
