@@ -176,3 +176,70 @@
     )
   )
 )
+
+;; Apply Temporal Reputation Decay
+;; Implements time-based reputation reduction to maintain score relevance
+(define-public (decay-credibility)
+  (let 
+    (
+      (owner tx-sender)
+      (current-identity 
+        (unwrap! 
+          (map-get? identities {owner: owner}) 
+          ERR-IDENTITY-NOT-FOUND
+        )
+      )
+      (current-score (get credibility-score current-identity))
+      (decay-amount 
+        (/ (* current-score CREDIBILITY-DECAY-RATE) u100)
+      )
+      (updated-score 
+        (if (> (- current-score decay-amount) MIN-CREDIBILITY-SCORE)
+            (- current-score decay-amount)
+            MIN-CREDIBILITY-SCORE
+        )
+      )
+    )
+    (begin
+      ;; Apply time-based reputation reduction
+      (map-set identities 
+        {owner: owner}
+        (merge current-identity {
+          credibility-score: updated-score,
+          last-updated: stacks-block-height
+        })
+      )
+      (ok updated-score)
+    )
+  )
+)
+
+;; READ-ONLY QUERY FUNCTIONS
+
+;; Retrieve Reputation Profile
+;; Returns complete reputation information for a specified identity
+(define-read-only (get-credibility (owner principal))
+  (map-get? identities {owner: owner})
+)
+
+;; Verify Reputation Threshold
+;; Validates whether an identity meets minimum reputation requirements
+(define-read-only (verify-credibility-threshold 
+  (owner principal) 
+  (min-credibility-threshold uint)
+)
+  (match 
+    (map-get? identities {owner: owner})
+    identity 
+      (if (>= (get credibility-score identity) min-credibility-threshold)
+          (some true)
+          none
+      )
+    none
+  )
+)
+
+;; CONTRACT INITIALIZATION
+
+;; Bootstrap the reputation activity framework
+(initialize-credibility-actions)
